@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor de ECG en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#F3F5F7; --panel:#FFFFFF; --ink:#1B2632; --ink2:#4F5D6C; --muted:#7A8694;
+  --line:#DBE1E7; --line2:#ECEFF3;
+  --paper:#FFF7F4; --gridMinor:rgba(226,138,130,.24); --gridMajor:rgba(206,92,84,.44); --trace:#141E29;
+  --ok:#187A4B; --okBg:#E3F3EA; --okZone:#B9DFC8;
+  --warn:#9A5B00; --warnBg:#FFF0D2; --warnZone:#F4D9A0;
+  --alert:#BE2B2B; --alertBg:#FCE5E3; --alertZone:#F1BDB8;
+  --none:#5B6775; --noneBg:#E9EDF1;
+  --accent:#0C6873; --accentBg:#DAEEF0; --rmark:#D3322A;
+  --f-num:'Barlow Condensed','Arial Narrow','Roboto Condensed',system-ui,sans-serif;
+  --f-txt:'Public Sans',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--page);color:var(--ink);font:400 15px/1.5 var(--f-txt);font-variant-numeric:tabular-nums}
+h1,h2,h3,h4,p{margin:0}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- barra superior ---------- */
+.top{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:12px clamp(16px,3vw,40px);background:#fff;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;flex:none}
+.brand h1{font:600 26px/1 var(--f-num);letter-spacing:.01em}
+.brand p{margin-top:3px;color:var(--ink2);font-size:13px}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.conn{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:var(--noneBg);color:var(--ink);font-size:13px;font-weight:500}
+.conn .dot{width:9px;height:9px;border-radius:50%;background:var(--none)}
+.conn[data-k=live]{background:var(--okBg)} .conn[data-k=live] .dot{background:var(--ok)}
+.conn[data-k=demo]{background:var(--accentBg)} .conn[data-k=demo] .dot{background:var(--accent)}
+.conn[data-k=connecting],.conn[data-k=waiting],.conn[data-k=stale]{background:var(--warnBg)} .conn[data-k=connecting] .dot,.conn[data-k=waiting] .dot,.conn[data-k=stale] .dot{background:#D98A00}
+.conn[data-k=error]{background:var(--alertBg)} .conn[data-k=error] .dot{background:var(--alert)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:pointer;font-weight:500;font-size:14px}
+.btn:hover{background:var(--line2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#0A5761}
+.sel{height:36px;padding:0 10px;border:1px solid var(--line);border-radius:4px;background:#fff;font-size:14px;max-width:290px}
+.lbl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+
+/* ---------- tira de papel (señal en vivo) ---------- */
+.strip{position:relative;height:clamp(300px,42vw,380px);background:var(--paper);border-bottom:1px solid var(--line)}
+.strip canvas{display:block;width:100%;height:100%}
+.strip .tag{position:absolute;left:clamp(16px,3vw,40px);top:12px;font-size:13px;color:var(--ink2);pointer-events:none}
+.strip .tag b{font:600 22px/1 var(--f-num);color:var(--ink);margin-right:10px}
+.strip .hr{position:absolute;right:clamp(12px,3vw,40px);top:10px;display:flex;align-items:baseline;gap:6px;padding:2px 12px 4px;background:rgba(255,247,244,.86);border-radius:4px;pointer-events:none}
+.strip .hr b{font:600 clamp(44px,6vw,68px)/1 var(--f-num);color:var(--ink)}
+.strip .hr span{font-size:14px;color:var(--ink2)}
+.strip[data-level=ok] .hr b{color:var(--ok)} .strip[data-level=warn] .hr b{color:var(--warn)} .strip[data-level=alert] .hr b{color:var(--alert)}
+.strip .msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--ink2);font-size:16px;pointer-events:none}
+.strip .msg.on{display:flex}
+.strip .msg div{max-width:440px;background:rgba(255,247,244,.92);padding:14px 18px;border-radius:4px}
+.bar{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:10px clamp(16px,3vw,40px);background:#fff;border-bottom:1px solid var(--line)}
+.seg{display:inline-flex}
+.seg button{height:32px;padding:0 12px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:13px;margin-left:-1px}
+.seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}.seg button:last-child{border-radius:0 4px 4px 0}
+.seg button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff;position:relative}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--ink2)}
+.chk input{width:16px;height:16px;accent-color:var(--accent)}
+.bar .sp{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:13px;color:var(--ink2)}
+
+/* ---------- cuerpo ---------- */
+main{max-width:1360px;margin:0 auto;padding:28px clamp(16px,3vw,40px) 48px}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:28px;align-items:start}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.panel>h3{font:600 22px/1.1 var(--f-num);letter-spacing:.01em;padding:16px 20px 0}
+.panel .cap{padding:6px 20px 16px;color:var(--ink2);font-size:13px}
+.col{display:flex;flex-direction:column;gap:28px}
+@media(min-width:1001px){.col{position:sticky;top:16px}}
+.okg{width:20px;height:20px;display:block;margin-left:auto}
+
+/* veredicto */
+.verdict .head{display:flex;gap:16px;padding:22px 20px;border-radius:5px 5px 0 0}
+.verdict[data-level=ok] .head{background:var(--okBg);color:var(--ok)}
+.verdict[data-level=warn] .head{background:var(--warnBg);color:var(--warn)}
+.verdict[data-level=alert] .head{background:var(--alertBg);color:var(--alert)}
+.verdict[data-level=none] .head{background:var(--noneBg);color:var(--none)}
+.verdict .ico{width:46px;height:46px;flex:none;display:none}
+.verdict[data-level=ok] .i-ok,.verdict[data-level=warn] .i-warn,.verdict[data-level=alert] .i-alert,.verdict[data-level=none] .i-none{display:block}
+.verdict h2{font:600 clamp(34px,4vw,46px)/1 var(--f-num);letter-spacing:.005em}
+.verdict .head p{margin-top:8px;color:var(--ink);font-size:15px;max-width:52ch}
+.find{list-style:none;margin:0;padding:6px 20px 4px}
+.find li{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line2)}
+.find li:first-child{border-top:0}
+.find .m{flex:none;width:18px;height:18px;margin-top:2px}
+.find strong{display:block;font-weight:600;font-size:15px}
+.find span{display:block;color:var(--ink2);font-size:13.5px;line-height:1.45;max-width:60ch}
+.find .s1 strong{color:var(--warn)} .find .s2 strong{color:var(--alert)}
+.find .none{color:var(--ink2);font-size:14px;padding:6px 0 10px}
+.qual{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px 18px;border-top:1px solid var(--line);font-size:13px;color:var(--ink2)}
+.qual .track{flex:1;min-width:110px;height:6px;border-radius:3px;background:var(--line2);overflow:hidden}
+.qual .track i{display:block;height:100%;width:0;background:var(--ok)}
+.qual[data-q=regular] .track i{background:#D98A00}.qual[data-q=mala] .track i{background:var(--alert)}
+#avg{display:block;width:100%;height:270px}
+
+/* tabla de mediciones */
+.meas table{width:100%;border-collapse:collapse}
+.meas th,.meas td{padding:0 12px;text-align:left;vertical-align:middle}
+.meas thead th{font-size:12.5px;font-weight:500;color:var(--muted);padding-top:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.meas tr.grp th{font:600 17px/1 var(--f-num);letter-spacing:.02em;color:var(--ink);padding:18px 12px 8px;border-bottom:1px solid var(--line)}
+.meas tbody tr:not(.grp){border-bottom:1px solid var(--line2);height:50px}
+.meas td.n{font-size:14.5px}
+.meas td.n small{display:block;color:var(--muted);font-size:12px;line-height:1.2}
+.meas td.v{white-space:nowrap;width:1%}
+.meas td.v b{font:600 27px/1 var(--f-num)}
+.meas td.v em{font-style:normal;font-size:12.5px;color:var(--ink2);margin-left:4px}
+.meas .txt{font:600 17px/1.1 var(--f-txt)}
+.meas .st-ok b,.meas .st-ok .txt{color:var(--ink)}
+.meas .st-warn b,.meas .st-warn .txt{color:var(--warn)} .meas .st-alert b,.meas .st-alert .txt{color:var(--alert)}
+.meas .st-info b{color:var(--ink2)}
+.gauge{position:relative;height:8px;border-radius:4px;background:var(--alertZone);min-width:110px}
+.gauge.soft{background:var(--warnZone)}
+.gauge i{position:absolute;top:0;bottom:0}
+.gauge .zw{background:var(--warnZone)} .gauge .zo{background:var(--okZone);border-radius:4px}
+.gauge .mk{position:absolute;top:-4px;width:4px;height:16px;margin-left:-2px;background:var(--ink);border:1px solid #fff;border-radius:2px}
+.meas td.g{width:26%}
+.meas td.r{font-size:13px;color:var(--ink2);white-space:nowrap}
+.pill{display:inline-block;padding:2px 9px;border-radius:3px;font-size:12px;font-weight:600}
+.pill.ok{background:var(--okBg);color:var(--ok)} .pill.warn{background:var(--warnBg);color:var(--warn)} .pill.alert{background:var(--alertBg);color:var(--alert)}
+.meas td.p{text-align:right;width:1%;white-space:nowrap}
+.empty{padding:34px 20px;color:var(--ink2);text-align:center}
+@media(max-width:700px){.meas td.g,.meas th.g{display:none}.meas th,.meas td{padding:0 8px}}
+
+/* referencia */
+.ref{margin-top:28px}
+.ref summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;padding:16px 20px;font:600 22px/1.1 var(--f-num);letter-spacing:.01em}
+.ref summary::-webkit-details-marker{display:none}
+.ref summary::before{content:"";width:9px;height:9px;border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(-45deg);transition:transform .15s}
+.ref[open] summary::before{transform:rotate(45deg)}
+.ref .in{padding:0 20px 20px;overflow-x:auto}
+.ref table{border-collapse:collapse;width:100%;min-width:720px;font-size:13.5px}
+.ref th{font-size:12.5px;font-weight:500;color:var(--muted);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+.ref td{padding:10px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+.ref td:first-child{font-weight:600;white-space:nowrap}
+.ref td.nm{white-space:nowrap;font-family:var(--f-num);font-size:17px;font-weight:600}
+.ref p.note{margin:14px 0 0;color:var(--ink2);font-size:13px;max-width:80ch}
+.foot{margin-top:24px;color:var(--ink2);font-size:13px;max-width:90ch}
+.foot strong{color:var(--ink)}
+
+/* ajustes */
+dialog{border:1px solid var(--line);border-radius:6px;padding:0;max-width:min(560px,94vw);width:100%;color:var(--ink);box-shadow:0 20px 60px rgba(20,30,41,.28)}
+dialog::backdrop{background:rgba(20,30,41,.45)}
+dialog .dh{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
+dialog .dh h2{font:600 26px/1 var(--f-num)}
+dialog .dh p{margin-top:4px;color:var(--ink2);font-size:13.5px}
+dialog .db{padding:16px 22px;display:grid;gap:16px}
+dialog .df{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--line);background:var(--page)}
+.f{display:grid;gap:6px}
+.f>label,.f>span.l{font-weight:600;font-size:13.5px}
+.f input[type=text],.f input[type=password],.f select,.f input[type=url]{height:38px;padding:0 10px;border:1px solid var(--line);border-radius:4px;background:#fff;width:100%}
+.f small{color:var(--ink2);font-size:12.5px}
+.f code{font:600 13px/1.4 ui-monospace,Menlo,Consolas,monospace;background:var(--line2);padding:2px 6px;border-radius:3px;word-break:break-all}
+.radios{display:grid;gap:8px}
+.radios label{font-weight:400;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:4px;cursor:pointer}
+.radios input{margin-top:4px;accent-color:var(--accent)}
+.radios label:has(input:checked){border-color:var(--accent);background:var(--accentBg)}
+.radios b{display:block;font-size:14px}.radios small{color:var(--ink2);font-size:12.5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hide{display:none!important}
+
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 38 38" aria-hidden="true"><rect width="38" height="38" rx="8" fill="#0C6873"/><path d="M4 21h8l3-9 5 17 4-12 2 4h8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div>
+      <h1>Monitor de ECG</h1>
+      <p>Derivación I, señal de la ESP32 en tiempo real</p>
+    </div>
+  </div>
+  <div class="top-r">
+    <label class="lbl" id="scWrap">Señal simulada
+      <select class="sel" id="scenario" aria-label="Escenario de la señal simulada"></select>
+    </label>
+    <div class="conn" id="conn" data-k="demo" role="status" aria-live="polite"><span class="dot"></span><span id="connText">Demostración</span></div>
+    <button class="btn" id="btnSet" type="button">Ajustes y conexión</button>
+  </div>
+</header>
+
+<section class="strip" id="strip" data-level="none" aria-label="Señal de ECG en vivo">
+  <canvas id="trace" role="img" aria-label="Gráfico de la señal de ECG en vivo"></canvas>
+  <div class="tag"><b>DI</b><span id="tagTxt">25 mm/s, 10 mm/mV</span></div>
+  <div class="hr" aria-live="off"><b id="hrBig">--</b><span>lpm</span></div>
+  <div class="msg" id="stripMsg"><div id="stripMsgTxt"></div></div>
+</section>
+<div class="bar">
+  <div class="lbl">Velocidad
+    <div class="seg" id="segSpeed"><button type="button" data-v="12.5" aria-pressed="false">12,5</button><button type="button" data-v="25" aria-pressed="true">25</button><button type="button" data-v="50" aria-pressed="false">50 mm/s</button></div>
+  </div>
+  <div class="lbl">Ganancia
+    <div class="seg" id="segGain"><button type="button" data-v="5" aria-pressed="false">5</button><button type="button" data-v="10" aria-pressed="true">10</button><button type="button" data-v="20" aria-pressed="false">20 mm/mV</button></div>
+  </div>
+  <label class="chk"><input type="checkbox" id="chkMarks" checked>Marcar ondas P, Q, R, S y T</label>
+  <div class="sp"><span id="rate">--</span><button class="btn" id="btnPause" type="button">Pausar</button></div>
+</div>
+
+<main>
+  <div class="grid">
+    <div class="col">
+      <section class="panel verdict" id="verdict" data-level="none" aria-live="polite">
+        <div class="head">
+          <svg class="ico i-ok" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r="21" fill="none" stroke="currentColor" stroke-width="3"/><path d="M13 24l7 7 13-15" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg class="ico i-warn" viewBox="0 0 46 46" aria-hidden="true"><path d="M23 5L44 41H2z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M23 18v11" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/><circle cx="23" cy="35" r="2.2" fill="currentColor"/></svg>
+          <svg class="ico i-alert" viewBox="0 0 46 46" aria-hidden="true"><path d="M15 3h16l12 12v16L31 43H15L3 31V15z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M23 13v12" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/><circle cx="23" cy="32" r="2.3" fill="currentColor"/></svg>
+          <svg class="ico i-none" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r="21" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="5 5"/><path d="M11 23h6l3-7 5 14 3-7h7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div><h2 id="vHead">Reuniendo señal</h2><p id="vSum">Hacen falta unos segundos de señal para poder analizarla.</p></div>
+        </div>
+        <ul class="find" id="findings"></ul>
+        <div class="qual" id="qual" data-q="none"><span id="qTxt">Calidad de la señal: sin datos</span><div class="track"><i id="qBar"></i></div><span id="qBeats"></span></div>
+      </section>
+
+      <section class="panel">
+        <h3>Latido promedio</h3>
+        <p class="cap" id="avgCap">Se alinean los latidos limpios sobre la onda R y se promedian para medir cada onda.</p>
+        <canvas id="avg" role="img" aria-label="Latido promedio con las ondas P, Q, R, S y T marcadas"></canvas>
+      </section>
+    </div>
+
+    <section class="panel meas">
+      <h3>Mediciones</h3>
+      <p class="cap">Se calculan cada medio segundo sobre los últimos 12 segundos de señal.</p>
+      <table>
+        <thead><tr><th>Parámetro</th><th>Valor</th><th class="g">Escala</th><th>Normal</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <details class="panel ref">
+    <summary>Guía de valores de referencia</summary>
+    <div class="in">
+      <table>
+        <thead><tr><th>Parámetro</th><th>Normal (adulto)</th><th>Si está fuera de rango, puede indicar</th></tr></thead>
+        <tbody>
+          <tr><td>Frecuencia cardíaca</td><td>60 a 100 lpm</td><td>Menos de 60: bradicardia (normal en deportistas; también hipotiroidismo, fármacos o bloqueos). Más de 100: taquicardia (ejercicio, fiebre, ansiedad, anemia, hipertiroidismo o arritmias).</td></tr>
+          <tr><td>Regularidad (intervalo RR)</td><td>Regular, con leve variación al respirar</td><td>Muy irregular sin onda P: fibrilación auricular. Latidos adelantados aislados: extrasístoles. Pausas de más de 2 s: paro sinusal o bloqueo.</td></tr>
+          <tr><td>Onda P</td><td>Antes de cada QRS. Menos de 120 ms y menos de 0,25 mV</td><td>Ausente: ritmo que no nace en el nodo sinusal (fibrilación auricular, ritmo de la unión). Ancha: agrandamiento de la aurícula izquierda. Alta: sobrecarga de la aurícula derecha.</td></tr>
+          <tr><td>Intervalo PR</td><td>120 a 200 ms</td><td>Más de 200 ms: bloqueo auriculoventricular de 1.er grado. Menos de 120 ms: preexcitación (Wolff-Parkinson-White) o ritmo de la unión.</td></tr>
+          <tr><td>Onda Q</td><td>Menos de 40 ms y menos del 25 % de la R</td><td>Q ancha y profunda: necrosis por un infarto previo (en DI, zona lateral alta).</td></tr>
+          <tr><td>Complejo QRS</td><td>Hasta 100 ms. Amplitud de 0,5 mV o más</td><td>120 ms o más: bloqueo de rama, ritmo ventricular, hiperpotasemia, fármacos. Voltaje bajo: mal contacto, obesidad, EPOC, derrame pericárdico. Voltaje alto: hipertrofia ventricular.</td></tr>
+          <tr><td>Onda R y onda S</td><td>Sin valor fijo en una sola derivación</td><td>Se miden como apoyo. Una S profunda en DI puede sugerir desviación del eje a la derecha.</td></tr>
+          <tr><td>Segmento ST</td><td>En la línea de base (entre −0,1 y 0,1 mV)</td><td>Elevado 0,1 mV o más: infarto agudo, pericarditis, repolarización precoz. Descendido 0,1 mV o más: isquemia, efecto de digital, alteraciones del potasio.</td></tr>
+          <tr><td>Onda T</td><td>Positiva en DI, de 0,1 a 1,0 mV</td><td>Invertida: isquemia, sobrecarga ventricular, secuela de infarto. Aplanada: potasio bajo, isquemia, fármacos. Alta y picuda: hiperpotasemia.</td></tr>
+          <tr><td>QT corregido (QTc)</td><td>350 a 450 ms (hombres) y 350 a 460 ms (mujeres)</td><td>Más de 500 ms: riesgo de arritmias graves (torsades de pointes): fármacos, potasio, calcio o magnesio bajos, QT largo congénito. Menos de 350 ms: calcio alto o síndrome de QT corto.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Los límites cambian un poco entre guías (AHA, ACC, HRS, ESC) y con la edad. El QTc se calcula con Bazett entre 55 y 95 lpm y con Fridericia fuera de ese rango. En esta página el filtro pasa altos de 0,34 Hz del circuito y el de 0,5 Hz digital pueden alterar la medición del segmento ST.</p>
+    </div>
+  </details>
+
+  <p class="foot"><strong>Herramienta educativa del TP integrador.</strong> No es un equipo médico ni reemplaza el diagnóstico de un profesional. Con una sola derivación no se pueden detectar todas las alteraciones (por ejemplo, la mayoría de los infartos). Ante dolor de pecho, falta de aire, mareos o desmayos, consultá a emergencias.</p>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="frm">
+    <div class="dh"><h2>Ajustes y conexión</h2><p>Elegí de dónde llega la señal y los datos del paciente.</p></div>
+    <div class="db">
+      <div class="f radios" role="radiogroup" aria-label="Fuente de la señal">
+        <label><input type="radio" name="src" value="demo"><span><b>Demostración</b><small>Señal simulada en esta página. Sirve para probar el análisis sin la ESP32.</small></span></label>
+        <label><input type="radio" name="src" value="mqtt"><span><b>ESP32 por internet (MQTT)</b><small>La ESP32 publica las muestras en un servidor MQTT y esta página las recibe desde cualquier computadora.</small></span></label>
+      </div>
+      <div id="mqttBox" class="db" style="padding:0">
+        <div class="f"><label for="broker">Servidor MQTT</label>
+          <select id="broker"></select>
+          <input type="url" id="brokerUrl" placeholder="wss://mi-servidor:8884/mqtt" class="hide" aria-label="Dirección del servidor">
+          <small>Debe aceptar WebSockets seguros (wss).</small></div>
+        <div class="f"><label for="device">Código del equipo</label>
+          <input type="text" id="device" maxlength="24" autocomplete="off" spellcheck="false">
+          <small>Tema donde se publica: <code id="topicShow"></code></small>
+          <small>Este mismo código va en <code>DEVICE_ID</code> del programa de la ESP32. Usá uno difícil de adivinar: en un servidor público cualquiera que lo conozca puede ver la señal.</small></div>
+        <div class="two">
+          <div class="f"><label for="user">Usuario (opcional)</label><input type="text" id="user" autocomplete="off"></div>
+          <div class="f"><label for="pass">Contraseña (opcional)</label><input type="password" id="pass" autocomplete="off"><small>No se guarda.</small></div>
+        </div>
+      </div>
+      <div class="f"><label for="sex">Sexo del paciente</label>
+        <select id="sex"><option value="M">Hombre (QTc normal hasta 450 ms)</option><option value="F">Mujer (QTc normal hasta 460 ms)</option></select>
+        <small>Los valores de referencia están pensados para adultos.</small></div>
+    </div>
+    <div class="df"><button class="btn" value="cancel" type="button" id="dlgCancel">Cancelar</button><button class="btn primary" value="ok" type="submit">Guardar y conectar</button></div>
+  </form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.min.js" onerror="window.__noMqtt=true"></script>
+<script>
+/* ==========================================================================
+   ANÁLISIS DE ECG (una derivación) — detección de latidos, delineación de
+   ondas P-Q-R-S-T, intervalos y reglas de interpretación.
+   Todo en JavaScript puro, sin dependencias.
+   ========================================================================== */
+const ECGAN = (function () {
+'use strict';
+
+/* ---------- utilidades ---------- */
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const sum = a => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; };
+const mean = a => (a.length ? sum(a) / a.length : NaN);
+const std = a => { if (a.length < 2) return NaN; const m = mean(a); let s = 0; for (const v of a) s += (v - m) * (v - m); return Math.sqrt(s / (a.length - 1)); };
+const median = a => { if (!a.length) return NaN; const s = Array.from(a).sort((p, q) => p - q); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const sgn = v => (v < 0 ? -1 : 1);
+
+/* ---------- filtros ---------- */
+function biquad(type, fc, fs) {
+  const w0 = 2 * Math.PI * fc / fs, c = Math.cos(w0), al = Math.sin(w0) / (2 * Math.SQRT1_2);
+  let b0, b1;
+  if (type === 'lp') { b0 = (1 - c) / 2; b1 = 1 - c; } else { b0 = (1 + c) / 2; b1 = -(1 + c); }
+  const a0 = 1 + al;
+  return { b: [b0 / a0, b1 / a0, b0 / a0], a: [-2 * c / a0, (1 - al) / a0] };
+}
+function runBiquad(x, f) {
+  const n = x.length, y = new Float64Array(n); let z1 = 0, z2 = 0;
+  for (let i = 0; i < n; i++) {
+    const v = x[i], o = f.b[0] * v + z1;
+    z1 = f.b[1] * v - f.a[0] * o + z2;
+    z2 = f.b[2] * v - f.a[1] * o;
+    y[i] = o;
+  }
+  return y;
+}
+/* filtro de fase cero (adelante y atrás) con extensión impar en los bordes */
+function filtfilt(x, f, pad) {
+  const n = x.length; pad = Math.min(pad | 0, n - 1);
+  const e = new Float64Array(n + 2 * pad);
+  for (let i = 0; i < pad; i++) { e[i] = 2 * x[0] - x[pad - i]; e[n + pad + i] = 2 * x[n - 1] - x[n - 2 - i]; }
+  for (let i = 0; i < n; i++) e[pad + i] = x[i];
+  let y = runBiquad(e, f); y.reverse(); y = runBiquad(y, f); y.reverse();
+  return y.slice(pad, pad + n);
+}
+/* media móvil centrada (ventana impar) */
+function ma(x, w) {
+  w = Math.max(1, w | 0); if (w % 2 === 0) w++;
+  const n = x.length, h = w >> 1, out = new Float64Array(n), c = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) c[i + 1] = c[i] + x[i];
+  for (let i = 0; i < n; i++) { const a = Math.max(0, i - h), b = Math.min(n - 1, i + h); out[i] = (c[b + 1] - c[a]) / (b - a + 1); }
+  return out;
+}
+const robustSigma = a => { const m = median(a); return 1.4826 * median(Array.from(a, v => Math.abs(v - m))); };
+
+/* ---------- preparación de la señal ---------- */
+function prepare(y, fs) {
+  const n = y.length, ms = t => Math.max(1, Math.round(t * fs / 1000));
+  const ys = ma(y, ms(10)), y20 = ma(y, ms(20)), y30 = ma(y, ms(30));
+  const dy = new Float64Array(n);
+  for (let i = 1; i < n - 1; i++) dy[i] = (ys[i + 1] - ys[i - 1]) * fs / 2;
+  const base = ma(y, ms(40)), r = new Float64Array(n);
+  for (let i = 0; i < n; i++) r[i] = y[i] - base[i];
+  return { y, ys, y20, y30, dy, fs, n, noise: robustSigma(r), dsig: robustSigma(dy) };
+}
+
+/* ---------- detección de complejos QRS ---------- */
+function detectQRS(y, fs) {
+  const n = y.length, ms = t => Math.max(1, Math.round(t * fs / 1000));
+  const pad = Math.round(fs);
+  const bp = filtfilt(filtfilt(y, biquad('hp', 5, fs), pad), biquad('lp', 15, fs), pad);
+  const sq = new Float64Array(n);
+  for (let i = 2; i < n - 2; i++) { const d = (2 * bp[i + 2] + bp[i + 1] - bp[i - 1] - 2 * bp[i - 2]) * fs / 8; sq[i] = d * d; }
+  const mwi = ma(sq, ms(100));
+  // máximos locales, supresión de no-máximos (mínimo 250 ms entre latidos)
+  const cand = [];
+  for (let i = 1; i < n - 1; i++) if (mwi[i] > mwi[i - 1] && mwi[i] >= mwi[i + 1] && mwi[i] > 0) cand.push(i);
+  cand.sort((a, b) => mwi[b] - mwi[a]);
+  const acc = [], minD = ms(250);
+  for (const c of cand) { if (acc.every(a => Math.abs(a - c) >= minD)) acc.push(c); }
+  if (!acc.length) return [];
+  const hs = acc.map(i => mwi[i]).sort((a, b) => b - a);
+  const ref = median(hs.slice(0, Math.min(3, hs.length)));
+  const peaks = acc.filter(i => mwi[i] >= 0.3 * ref).sort((a, b) => a - b);
+  // afinar sobre la señal: mayor deflexión (en valor absoluto) cerca del máximo
+  const R = [];
+  for (const p of peaks) {
+    let best = -1, bv = -1;
+    for (let k = Math.max(0, p - ms(80)); k <= Math.min(n - 1, p + ms(80)); k++) { const v = Math.abs(y[k]); if (v > bv) { bv = v; best = k; } }
+    if (best >= 0 && (!R.length || best - R[R.length - 1] >= ms(200))) R.push(best);
+  }
+  return R;
+}
+
+/* ---------- delineación de un latido ---------- */
+/* Devuelve posiciones (en muestras) y medidas de un latido con R en `ri`.
+   c: { rrPrev, rrNext (muestras), noise (mV), s (+1/-1 polaridad del QRS) } */
+function delineate(P, ri, c) {
+  const { ys, y20, y30, dy, fs, n } = P;
+  const ms = t => Math.max(1, Math.round(t * fs / 1000));
+  const s = c.s || 1, noise = c.noise != null ? c.noise : P.noise;
+  const out = { ok: false, ri };
+  if (ri - ms(340) < 0 || ri + ms(480) >= n) { out.reason = 'borde'; return out; }
+
+  /* --- QRS: inicio y fin por pendiente --- */
+  let dmax = 0;
+  for (let k = ri - ms(70); k <= ri + ms(70); k++) dmax = Math.max(dmax, Math.abs(dy[k]));
+  const thr = Math.max(0.05 * dmax, 3 * (c.dsig != null ? c.dsig : P.dsig));
+  const run = ms(12);
+  let onset = ri - ms(40), quiet = 0;
+  for (let i = ri - 1; i > ri - ms(160); i--) {
+    if (Math.abs(dy[i]) < thr) { quiet++; if (quiet >= run) { onset = i + run - 1; break; } } else quiet = 0;
+  }
+  let iso0 = 0;
+  { const a_ = onset - ms(38), b_ = onset - ms(8); if (a_ < 0) { out.reason = 'borde'; return out; } for (let i = a_; i <= b_; i++) iso0 += ys[i]; iso0 /= (b_ - a_ + 1); }
+  /* fin del QRS (punto J): primero se ubica el nadir de la S (si existe) y se busca
+     desde ahí el punto donde la pendiente se apaga o alcanza un mínimo local */
+  const D = i => s * dy[i];
+  let iD = ri, dmn = 0;
+  for (let k = ri; k <= ri + ms(70); k++) if (D(k) < dmn) { dmn = D(k); iD = k; }
+  let start = iD;
+  for (let k = iD + 1; k <= ri + ms(90); k++) {
+    if (D(k) >= 0) {                                    // cruce de pendiente: nadir de la S
+      let dep = 0; for (let j = Math.max(onset, k - ms(6)); j <= k + ms(6); j++) dep = Math.min(dep, s * (ys[j] - iso0));
+      if (-dep >= Math.max(0.03, 3 * (c.noise != null ? c.noise : P.noise))) {
+        let mxD = -1e9; for (let j = k; j <= k + ms(50); j++) if (D(j) > mxD) { mxD = D(j); start = j; }
+      }
+      break;
+    }
+  }
+  let offset = ri + ms(70); quiet = 0;
+  for (let i = start + 1; i < ri + ms(200); i++) {
+    const a0 = Math.abs(D(i));
+    if (a0 < thr) { quiet++; if (quiet >= run) { offset = i - run + 1; break; } } else quiet = 0;
+    if (i - start >= ms(8) && a0 <= Math.abs(D(i - 1)) && a0 <= Math.abs(D(i + 1)) && a0 < 0.6 * Math.abs(D(start))) { offset = i; break; }
+  }
+  out.onset = onset; out.offset = offset;
+  out.qrs = (offset - onset) * 1000 / fs;
+
+  /* --- línea isoeléctrica: segmento PR justo antes del QRS --- */
+  const a = onset - ms(38), b = onset - ms(8);
+  if (a < 0) { out.reason = 'borde'; return out; }
+  let iso = 0; for (let i = a; i <= b; i++) iso += ys[i]; iso /= (b - a + 1);
+  out.iso = iso;
+  const z = i => s * (ys[i] - iso);
+  const thrW = Math.max(0.03, 3 * noise);           // umbral mínimo de una onda (mV)
+
+  /* --- R, Q, S --- */
+  out.rAmp = z(ri);
+  let iR1 = ri; while (iR1 > onset && z(iR1) > 0) iR1--;
+  let iR2 = ri; while (iR2 < offset && z(iR2) > 0) iR2++;
+  out.iR1 = iR1; out.iR2 = iR2;
+  out.rDur = (iR2 - iR1) * 1000 / fs;
+  let qi = ri, qmin = 0;
+  for (let i = onset; i <= ri; i++) if (z(i) < qmin) { qmin = z(i); qi = i; }
+  out.qAmp = -qmin; out.qFound = out.qAmp >= thrW; out.qi = qi;
+  out.qDur = out.qFound ? (iR1 - onset) * 1000 / fs : 0;
+  let si = ri, smin = 0;
+  for (let i = ri; i <= offset + ms(10) && i < n; i++) if (z(i) < smin) { smin = z(i); si = i; }
+  out.sAmp = -smin; out.sFound = out.sAmp >= thrW; out.si = si;
+  out.sDur = out.sFound ? Math.max(0, (offset - iR2) * 1000 / fs) : 0;
+  let mx = -1e9, mn = 1e9;
+  for (let i = onset; i <= offset; i++) { mx = Math.max(mx, ys[i]); mn = Math.min(mn, ys[i]); }
+  out.qrsPP = mx - mn;
+
+  /* --- segmento ST (J + 60 ms) --- */
+  const k = offset + ms(60);
+  if (k + ms(8) >= n) { out.reason = 'borde'; return out; }
+  let st = 0, cnt = 0; for (let i = k - ms(8); i <= k + ms(8); i++) { st += ys[i]; cnt++; }
+  out.st = st / cnt - iso; out.stIdx = k;
+
+  /* --- onda T --- */
+  const rrN = c.rrNext || ms(1000);
+  const tS = offset + ms(40);
+  let tE = ri + Math.min(ms(620), Math.round(0.62 * rrN));
+  tE = Math.min(tE, n - 1 - ms(20));
+  out.tFound = false; out.tAmp = NaN; out.qt = NaN; out.tDur = NaN;
+  if (tE - tS >= ms(60)) {
+    let pk = -1, best = -1;
+    for (let i = tS + ms(6); i <= tE - ms(6); i++) { const v = Math.abs(y30[i] - iso); if (v > best) { best = v; pk = i; } }
+    out.tPk = pk; out.tAmp = y30[pk] - iso;
+    const atEdge = (pk <= tS + ms(10));
+    out.tFound = best >= thrW && !atEdge;
+    if (out.tFound) {
+      const st_ = sgn(out.tAmp), zz = i => st_ * (y30[i] - iso);
+      let m = pk, ms_ = 0;
+      for (let i = pk; i <= Math.min(pk + ms(200), n - 3); i++) { const d = (zz(i + 1) - zz(i - 1)) / 2; if (d < ms_) { ms_ = d; m = i; } }
+      if (ms_ < 0) {
+        out.tEnd = Math.min(m + zz(m) / (-ms_), m + ms(150));
+        out.qt = (out.tEnd - onset) * 1000 / fs;
+      }
+      let m0 = pk, s0 = 0;
+      for (let i = Math.max(tS, pk - ms(200)); i <= pk; i++) { const d = (zz(i + 1) - zz(i - 1)) / 2; if (d > s0) { s0 = d; m0 = i; } }
+      if (s0 > 0 && out.tEnd != null) {
+        out.tOn = m0 - zz(m0) / s0;
+        out.tDur = (out.tEnd - out.tOn) * 1000 / fs;
+      }
+    }
+  }
+
+  /* --- onda P --- */
+  out.pFound = false; out.pAmp = NaN; out.pDur = NaN; out.pr = NaN;
+  const rrP = c.rrPrev || ms(1000);
+  const qtEst = 0.40 * Math.sqrt(rrP / fs);                 // s (estimación para acotar la ventana)
+  const pS = ri - Math.min(ms(330), rrP - Math.round((qtEst - 0.02) * fs));
+  const pEnd = onset - ms(14);
+  if (pEnd - pS >= ms(80) && pS >= 0) {
+    /* línea de base local: recta entre el inicio de la ventana y el segmento PR
+       (compensa la deriva lenta de la línea de base) */
+    const tL = pS + ms(8), tR = onset - ms(23);
+    let aL = 0, cL = 0; for (let i = pS; i <= pS + ms(16); i++) { aL += y20[i]; cL++; } aL /= cL;
+    const dev = i => y20[i] - (aL + (iso - aL) * (i - tL) / (tR - tL));
+    let pk = -1, best = -1;
+    for (let i = pS + ms(12); i <= pEnd - ms(8); i++) { const v = Math.abs(dev(i)); if (v > best) { best = v; pk = i; } }
+    out.pPk = pk; out.pAmp = dev(pk);
+    if (best >= Math.max(0.04, 3 * noise) && pk > pS + ms(14)) {
+      const ps = sgn(out.pAmp), th = Math.max(0.15 * best, 0.5 * noise);
+      let l = pk; while (l > pS && ps * dev(l) > th) l--;
+      let r = pk; while (r < pEnd && ps * dev(r) > th) r++;
+      out.pFound = true; out.pOn = l; out.pOff = r;
+      out.pDur = (r - l) * 1000 / fs; out.pr = (onset - l) * 1000 / fs;
+    }
+  }
+  out.ok = true;
+  return out;
+}
+
+/* ---------- análisis completo de una ventana ---------- */
+function analyze(x, fs, opt) {
+  opt = opt || {};
+  const n = x.length, ms = t => Math.max(1, Math.round(t * fs / 1000));
+  const res = { ok: false, fs, x0: opt.x0 || 0, n };
+  if (n < fs * 5) { res.reason = 'pocos datos'; return res; }
+  const xr = Array.from(x);
+  const sd = std(xr);
+  if (!(sd > 0.004)) { res.reason = 'sin señal'; res.flat = true; return res; }
+  const clipped = xr.filter(v => Math.abs(v) > 8).length / n;
+  if (clipped > 0.02) { res.reason = 'saturada'; res.clipped = true; return res; }
+
+  const y = fs > 100 ? filtfilt(x, biquad('lp', 40, fs), Math.round(fs / 2)) : Float64Array.from(x);
+  const P = prepare(y, fs);
+  res.noise = P.noise;
+
+  const R = detectQRS(y, fs);
+  res.nDetected = R.length;
+  if (R.length < 4) { res.reason = 'pocos latidos'; return res; }
+  const s = sgn(median(R.map(i => y[i])));
+  res.polarity = s;
+
+  /* ritmo */
+  const rr = []; for (let i = 1; i < R.length; i++) rr.push((R[i] - R[i - 1]) / fs);
+  const rrMed = median(rr), rrMean = mean(rr);
+  const hr = 60 / rrMean;
+  const flag = new Array(R.length).fill(false);          // latido prematuro
+  const explained = new Array(rr.length).fill(false);
+  for (let i = 0; i < rr.length; i++) {
+    const early = rr[i] < 0.85 * rrMed && (i + 1 >= rr.length ? rr[i] < 0.75 * rrMed : rr[i + 1] > 1.15 * rrMed);
+    if (early) { flag[i + 1] = true; explained[i] = true; if (i + 1 < rr.length) explained[i + 1] = true; }
+  }
+  if (rr[0] > 1.15 * rrMed) explained[0] = true;                       // pausa cuyo latido previo cae fuera de la ventana
+  if (rr[rr.length - 1] < 0.85 * rrMed) explained[rr.length - 1] = true;
+  const band = rr.map(v => Math.abs(v - rrMed) <= 0.20 * rrMed);
+  const dif = [];
+  for (let i = 0; i + 1 < rr.length; i++) if (!explained[i] && !explained[i + 1]) dif.push(rr[i + 1] - rr[i]);
+  const rmssdRatio = dif.length >= 3 ? Math.sqrt(mean(dif.map(d => d * d))) / rrMed : 0;
+  const unexpl = rr.filter((_, i) => !band[i] && !explained[i]).length / rr.length;
+  const cleanRR = rr.filter((_, i) => band[i]);
+  const irregular = rmssdRatio > 0.12 || unexpl > 0.2;
+  Object.assign(res, {
+    rr, rrMed, rrMean, hr, prematureCount: irregular ? 0 : flag.filter(Boolean).length,
+    rmssdRatio, cvRR: cleanRR.length > 2 ? std(cleanRR) / mean(cleanRR) : 0,
+    irregular, pause: Math.max(...rr) >= 2.0
+  });
+
+  /* delineación de cada latido */
+  const beats = R.map((ri, k) => ({
+    i: ri, abs: res.x0 + ri, prem: flag[k],
+    d: delineate(P, ri, {
+      s, noise: P.noise,
+      rrPrev: k > 0 ? R[k] - R[k - 1] : Math.round(rrMed * fs),
+      rrNext: k + 1 < R.length ? R[k + 1] - R[k] : Math.round(rrMed * fs)
+    })
+  }));
+  res.beats = beats;
+
+  /* latido promedio */
+  const pre = ms(400), post = ms(600), L = pre + post + 1;
+  const full = beats.filter(b => b.i - pre >= 0 && b.i + post < n);
+  const zone = b => { const o = []; for (let k = b.i - ms(80); k <= b.i + ms(320); k++) o.push(y[k]); return o; };
+  const Z = full.map(zone);
+  const tmpl = Z.length ? Z[0].map((_, j) => median(Z.map(z => z[j]))) : [];
+  const corr = a => {
+    const ma_ = mean(a), mb = mean(tmpl); let nu = 0, da = 0, db = 0;
+    for (let j = 0; j < a.length; j++) { nu += (a[j] - ma_) * (tmpl[j] - mb); da += (a[j] - ma_) ** 2; db += (tmpl[j] - mb) ** 2; }
+    return nu / Math.sqrt(da * db + 1e-12);
+  };
+  full.forEach((b, j) => { b.corr = corr(Z[j]); });
+  const nearPrem = new Set();
+  beats.forEach((b, k) => { if (b.prem) { nearPrem.add(k - 1); nearPrem.add(k); nearPrem.add(k + 1); } });
+  full.forEach(b => { b.k = beats.indexOf(b); });
+  const good = full.filter(b => b.corr >= 0.85 && !nearPrem.has(b.k));
+  res.medCorr = full.length ? median(full.map(b => b.corr)) : 0;
+  if (good.length < 3) { res.reason = 'pocos latidos limpios'; res.quality = { score: clamp(res.medCorr * 0.6, 0, 1), label: 'mala' }; return res; }
+  const A = new Float64Array(L);
+  for (const b of good) for (let j = 0; j < L; j++) A[j] += y[b.i - pre + j] / good.length;
+  const PA = prepare(A, fs);
+  const dA = delineate(PA, pre, { s, noise: P.noise / Math.sqrt(good.length), dsig: P.dsig / Math.sqrt(good.length), rrPrev: Math.round(rrMed * fs), rrNext: Math.round(rrMed * fs) });
+  res.avg = { sig: A, ri: pre, pre, post, d: dA, n: good.length, fs };
+  if (!dA.ok) { res.reason = 'no se pudo medir el latido'; return res; }
+
+  /* consistencia de la onda P latido a latido */
+  const nb = beats.filter(b => b.d.ok && !b.prem);
+  const withP = nb.filter(b => b.d.pFound);
+  res.pFrac = nb.length ? withP.length / nb.length : 0;
+  const lags = withP.map(b => b.d.onset - b.d.pPk);
+  res.pLagSd = lags.length > 2 ? std(lags) * 1000 / fs : NaN;
+  res.pConsistent = res.pFrac >= 0.65 && res.pLagSd < 30 && dA.pFound;
+
+  /* latidos prematuros: ¿QRS ancho y sin P? */
+  const pm = beats.filter(b => b.prem && b.d.ok);
+  res.premWide = pm.length ? median(pm.map(b => b.d.qrs)) : NaN;
+  res.premNoP = pm.length ? pm.filter(b => !b.d.pFound).length / pm.length : 0;
+
+  /* calidad */
+  const amp = Math.max(dA.qrsPP, 1e-3);
+  const snrDb = 20 * Math.log10(amp / (6 * P.noise + 1e-6));
+  const q = clamp(0.5 * clamp((res.medCorr - 0.5) / 0.45, 0, 1) + 0.5 * clamp((snrDb - 8) / 17, 0, 1), 0, 1);
+  res.quality = { score: q, snrDb, corr: res.medCorr, label: q >= 0.75 ? 'buena' : q >= 0.5 ? 'regular' : 'mala' };
+
+  /* mediciones (del latido promedio) */
+  const qtcB = dA.qt / Math.sqrt(rrMean * 1);            // ms / raíz(s)
+  const qtcF = dA.qt / Math.cbrt(rrMean);
+  const useF = hr < 55 || hr > 95;
+  res.m = {
+    hr, rr: rrMean * 1000,
+    pDur: dA.pFound ? dA.pDur : NaN, pAmp: dA.pFound ? dA.pAmp : NaN, pr: dA.pFound ? dA.pr : NaN,
+    qDur: dA.qDur, qAmp: dA.qAmp, rDur: dA.rDur, rAmp: dA.rAmp, sDur: dA.sDur, sAmp: dA.sAmp,
+    qrs: dA.qrs, qrsPP: dA.qrsPP, st: dA.st,
+    tDur: dA.tDur, tAmp: dA.tAmp, tFound: dA.tFound, qt: dA.qt,
+    qtcB, qtcF, qtc: useF ? qtcF : qtcB, qtcMethod: useF ? 'Fridericia' : 'Bazett'
+  };
+  res.ok = true;
+  return res;
+}
+
+/* ==========================================================================
+   INTERPRETACIÓN — reglas con valores de referencia
+   ========================================================================== */
+/* estado de una medida frente a sus rangos: ok / warn / alert */
+function statusOf(v, ok, warn, maxSev) {
+  if (!Number.isFinite(v)) return 'na';
+  let st;
+  if (v >= ok[0] && v <= ok[1]) st = 'ok';
+  else if (v > warn[0] && v < warn[1]) st = 'warn';
+  else st = 'alert';
+  if (maxSev === 'warn' && st === 'alert') st = 'warn';
+  return st;
+}
+
+function ranges(sex) {
+  const female = sex === 'F';
+  return {
+    hr:   { ok: [60, 100], warn: [40, 150], axis: [30, 160] },
+    pDur: { ok: [60, 120], warn: [40, 160], axis: [0, 200], max: 'warn' },
+    pAmp: { ok: [0.05, 0.25], warn: [0.03, 0.40], axis: [0, 0.5], max: 'warn' },
+    pr:   { ok: [120, 200], warn: [100, 300], axis: [60, 340] },
+    qrs:  { ok: [60, 100], warn: [50, 120], axis: [40, 180] },
+    qrsPP:{ ok: [0.5, 3.0], warn: [0.3, 4.5], axis: [0, 5], max: 'warn' },
+    st:   { ok: [-0.1, 0.1], warn: [-0.2, 0.2], axis: [-0.5, 0.5] },
+    tAmp: { ok: [0.1, 1.0], warn: [-0.1, 1.5], axis: [-0.6, 1.6], max: 'warn' },
+    qtc:  { ok: [350, female ? 460 : 450], warn: [330, 500], axis: [300, 560] }
+  };
+}
+
+function interpret(res, cfg) {
+  cfg = cfg || {};
+  const out = { level: 'none', sev: 0, headline: '', summary: '', findings: [], rows: null, conf: null };
+  if (!res || !res.ok) {
+    const why = res && res.reason;
+    out.level = 'none';
+    if (why === 'sin señal') { out.headline = 'Sin señal'; out.summary = 'La señal está plana. Revisá que los electrodos estén conectados y bien apoyados en la piel.'; }
+    else if (why === 'saturada') { out.headline = 'Señal saturada'; out.summary = 'La señal se sale de escala. Revisá el contacto de los electrodos y el cable.'; }
+    else if (why === 'pocos datos') { out.headline = 'Reuniendo señal'; out.summary = 'Hacen falta unos segundos de señal para poder analizarla.'; }
+    else { out.headline = 'Señal insuficiente'; out.summary = 'No hay suficientes latidos claros para medir. Con el paciente quieto y los electrodos bien apoyados suele mejorar.'; out.poor = true; }
+    return out;
+  }
+  if (res.quality && res.quality.score < 0.5) {
+    out.level = 'none'; out.poor = true; out.headline = 'Señal insuficiente';
+    out.summary = 'Hay demasiado ruido para interpretar el ECG con seguridad. Pedile al paciente que se quede quieto y revisá que los electrodos estén bien apoyados.';
+    out.conf = { quality: res.quality, beats: res.avg ? res.avg.n : 0 };
+    return out;
+  }
+  const R = ranges(cfg.sex), m = res.m, f = out.findings;
+  const add = (sev, title, detail) => f.push({ sev, title, detail });
+  const fmt = (v, d) => v.toFixed(d == null ? 0 : d).replace('.', ',');
+
+  /* --- ritmo y frecuencia --- */
+  if (m.hr < 40) add(2, `Bradicardia marcada (${fmt(m.hr)} lpm)`, 'Frecuencia muy baja. Con mareo, desmayo o falta de aire, consultá de inmediato.');
+  else if (m.hr < 60) add(1, `Bradicardia (${fmt(m.hr)} lpm)`, 'Puede ser normal en personas entrenadas o durante el sueño; también puede deberse a fármacos, hipotiroidismo o bloqueos.');
+  else if (m.hr >= 150) add(2, `Taquicardia marcada (${fmt(m.hr)} lpm)`, 'Frecuencia muy alta en reposo: conviene una consulta médica urgente.');
+  else if (m.hr > 100) add(1, `Taquicardia (${fmt(m.hr)} lpm)`, 'Puede deberse a ejercicio, fiebre, ansiedad, anemia o arritmias.');
+
+  const noP = !res.pConsistent;
+  if (res.irregular && noP) add(2, 'Ritmo irregular sin ondas P claras', 'Compatible con fibrilación auricular. Requiere confirmación con un ECG completo.');
+  else if (res.irregular) add(1, 'Ritmo irregular con onda P', 'Puede ser una arritmia sinusal (normal en jóvenes, sigue a la respiración) o extrasístoles auriculares.');
+  else if (noP) add(1, 'No se ve una onda P antes de cada QRS', 'Puede ser un ritmo de la unión AV o una onda P demasiado pequeña en esta derivación. Revisá la calidad de la señal.');
+  if (res.prematureCount > 0) {
+    const ventr = res.premWide >= 120 && res.premNoP >= 0.5;
+    add(res.prematureCount >= 5 ? 2 : 1,
+      `${res.prematureCount} latido${res.prematureCount > 1 ? 's' : ''} prematuro${res.prematureCount > 1 ? 's' : ''} en ${Math.round(res.n / res.fs)} s`,
+      ventr ? 'QRS ancho y sin onda P: posibles extrasístoles ventriculares.' : 'Posibles extrasístoles supraventriculares. Si son frecuentes, conviene consultar.');
+  }
+  if (res.pause) add(2, 'Pausa de más de 2 segundos', 'Puede indicar paro sinusal o bloqueo. Con mareo o desmayos, consultá de inmediato.');
+
+  /* --- onda P y PR --- */
+  if (Number.isFinite(m.pDur)) {
+    if (m.pDur > 120) add(1, `Onda P ancha (${fmt(m.pDur)} ms)`, 'Posible agrandamiento de la aurícula izquierda.');
+    if (m.pAmp > 0.25) add(1, `Onda P alta (${fmt(m.pAmp, 2)} mV)`, 'Posible sobrecarga de la aurícula derecha (se evalúa mejor en DII).');
+    if (m.pAmp < -0.05) add(1, 'Onda P negativa en DI', 'Puede indicar electrodos de brazos invertidos o un ritmo auricular ectópico.');
+  }
+  if (Number.isFinite(m.pr) && res.pConsistent) {
+    if (m.pr > 300) add(2, `PR muy largo (${fmt(m.pr)} ms)`, 'Bloqueo auriculoventricular importante. Requiere evaluación médica.');
+    else if (m.pr > 200) add(1, `PR largo (${fmt(m.pr)} ms)`, 'Compatible con bloqueo auriculoventricular de primer grado.');
+    else if (m.pr < 120) add(1, `PR corto (${fmt(m.pr)} ms)`, 'Puede indicar preexcitación (por ejemplo, síndrome de Wolff-Parkinson-White) o un ritmo de la unión.');
+  }
+
+  const stConf = Math.abs(m.st) < 0.15;              // con ST muy desviado, QRS y QT se miden peor
+  /* --- QRS --- */
+  if (m.qrs >= 120 && stConf) add(2, `QRS ancho (${fmt(m.qrs)} ms)`, 'Compatible con bloqueo de rama, ritmo de origen ventricular, hiperpotasemia o efecto de fármacos.');
+  else if (m.qrs >= 120) add(1, `QRS aparentemente ancho (${fmt(m.qrs)} ms)`, 'Con el ST muy desviado el final del QRS se mide con poca precisión. Confirmá con un ECG completo.');
+  else if (m.qrs > 100 && stConf) add(1, `QRS en el límite (${fmt(m.qrs)} ms)`, 'Posible bloqueo incompleto de rama.');
+  if (m.qrsPP < 0.5) add(1, `Voltaje bajo (${fmt(m.qrsPP, 2)} mV)`, 'Puede deberse a mal contacto de los electrodos, obesidad, EPOC o derrame pericárdico.');
+  else if (m.qrsPP > 3.0) add(1, `Voltaje alto (${fmt(m.qrsPP, 2)} mV)`, 'Posible hipertrofia ventricular; se confirma con las 12 derivaciones.');
+  if (res.polarity < 0) add(1, 'QRS negativo en DI', 'Posible inversión de los electrodos de los brazos o desviación del eje del corazón. Verificá la conexión.');
+  const qPath = m.qDur >= 40 && m.qAmp >= 0.25 * m.rAmp;
+  if (qPath) add(1, `Onda Q profunda y ancha (${fmt(m.qDur)} ms)`, 'Puede indicar un infarto previo (en DI, zona lateral alta).');
+
+  /* --- repolarización --- */
+  if (m.st >= 0.2) add(2, `Elevación del ST (${fmt(m.st, 2)} mV)`, 'Puede indicar infarto agudo, pericarditis o repolarización precoz. Con dolor de pecho es una urgencia. El filtro de 0,34 Hz puede alterar el ST: confirmá con un ECG diagnóstico.');
+  else if (m.st >= 0.1) add(1, `Elevación leve del ST (${fmt(m.st, 2)} mV)`, 'Poco específica. Conviene repetir la medición con el paciente en reposo.');
+  else if (m.st <= -0.2) add(2, `Descenso del ST (${fmt(m.st, 2)} mV)`, 'Puede indicar isquemia miocárdica, efecto de digital o alteración del potasio. El filtro de 0,34 Hz puede alterar el ST: confirmá con un ECG diagnóstico.');
+  else if (m.st <= -0.1) add(1, `Descenso leve del ST (${fmt(m.st, 2)} mV)`, 'Poco específico. Conviene repetir la medición con el paciente en reposo.');
+  if (!m.tFound) add(1, 'Onda T no identificable', 'Está muy aplanada o fusionada con el segmento ST. Repetí la medición con el paciente en reposo.');
+  else {
+    if (m.tAmp < -0.1) add(1, `Onda T invertida (${fmt(m.tAmp, 2)} mV)`, 'Puede indicar isquemia, sobrecarga ventricular o secuela de infarto.');
+    else if (m.tAmp < 0.1) add(1, `Onda T de muy baja amplitud (${fmt(m.tAmp, 2)} mV)`, 'Poco específico: puede deberse a potasio bajo, fármacos, isquemia o a un mal contacto.');
+    else if (m.tAmp > 1.0) add(1, `Onda T muy alta (${fmt(m.tAmp, 2)} mV)`, 'Puede aparecer con potasio alto (hiperpotasemia).');
+  }
+  if (Number.isFinite(m.qtc) && stConf) {
+    const lim = R.qtc.ok[1];
+    if (m.qtc > 500) add(2, `QT largo (QTc ${fmt(m.qtc)} ms)`, 'Riesgo de arritmias ventriculares. Puede deberse a fármacos, potasio, calcio o magnesio bajos, o a un QT largo congénito.');
+    else if (m.qtc > lim) add(1, `QT algo prolongado (QTc ${fmt(m.qtc)} ms)`, 'Conviene revisar fármacos y electrolitos.');
+    else if (m.qtc < 330) add(2, `QT corto (QTc ${fmt(m.qtc)} ms)`, 'Puede indicar hipercalcemia, efecto de fármacos o síndrome de QT corto.');
+    else if (m.qtc < 350) add(1, `QT algo corto (QTc ${fmt(m.qtc)} ms)`, 'Puede deberse a calcio alto o a efecto de fármacos.');
+  }
+
+  /* --- nivel general --- */
+  const sev = f.reduce((a, b) => Math.max(a, b.sev), 0);
+  f.sort((a, b) => b.sev - a.sev);
+  out.sev = sev;
+  out.level = sev === 0 ? 'ok' : sev === 1 ? 'warn' : 'alert';
+  const rhythm = res.irregular ? 'irregular' : 'regular';
+  const pTxt = res.pConsistent ? 'con onda P antes de cada QRS' : 'sin onda P clara';
+  out.headline = sev === 0 ? 'Sin hallazgos' : sev === 1 ? 'Atención' : 'Alerta';
+  out.summary = sev === 0
+    ? `Todos los valores medidos están dentro de lo normal. Ritmo ${rhythm} a ${fmt(m.hr)} lpm, ${pTxt}.`
+    : sev === 1
+      ? 'Hay valores fuera del rango normal. Pueden ser variantes normales o estar causados por el contacto de los electrodos: repetí la medición y consultá si persisten.'
+      : 'Hay hallazgos importantes. Esto no es un diagnóstico, pero conviene que un profesional revise un ECG completo.';
+  out.conf = { quality: res.quality, beats: res.avg.n };
+
+  /* --- filas de la tabla de mediciones --- */
+  const row = (key, label, unit, v, dec, spec, extra) => {
+    const st = spec ? statusOf(v, spec.ok, spec.warn, spec.max) : (Number.isFinite(v) ? 'info' : 'na');
+    return Object.assign({ key, label, unit, v, dec, spec, st }, extra || {});
+  };
+  const pAbsent = !res.pConsistent;
+  out.rows = [
+    { group: 'Ritmo' },
+    row('hr', 'Frecuencia cardíaca', 'lpm', m.hr, 0, R.hr, { note: `RR ${fmt(m.rr)} ms` }),
+    row('reg', 'Regularidad', '', NaN, 0, null, { text: res.prematureCount ? 'Con latidos prematuros' : res.irregular ? 'Irregular' : 'Regular', st: (res.irregular || res.prematureCount) ? (res.irregular && noP ? 'alert' : 'warn') : 'ok', normal: 'Regular' }),
+    { group: 'Aurícula' },
+    row('pDur', 'Onda P: duración', 'ms', m.pDur, 0, R.pDur, pAbsent ? { text: 'No se ve', st: 'warn' } : {}),
+    row('pAmp', 'Onda P: amplitud', 'mV', m.pAmp, 2, R.pAmp, pAbsent ? { text: 'No se ve', st: 'warn' } : {}),
+    row('pr', 'Intervalo PR', 'ms', m.pr, 0, R.pr, pAbsent ? { text: 'No medible', st: 'warn' } : {}),
+    { group: 'Ventrículo' },
+    row('qrs', 'Complejo QRS: duración', 'ms', m.qrs, 0, R.qrs),
+    row('qrsPP', 'Complejo QRS: amplitud', 'mV', m.qrsPP, 2, R.qrsPP),
+    row('qDur', 'Onda Q: duración', 'ms', m.qDur, 0, null, { normal: 'menor a 40', st: qPath ? 'warn' : (m.qDur > 0 ? 'ok' : 'info'), text: m.qDur > 0 ? null : 'No se ve' }),
+    row('qAmp', 'Onda Q: profundidad', 'mV', m.qAmp, 2, null, { normal: 'menor al 25 % de R', st: qPath ? 'warn' : 'ok' }),
+    row('rDur', 'Onda R: duración', 'ms', m.rDur, 0, null, { normal: 'sin referencia' }),
+    row('rAmp', 'Onda R: amplitud', 'mV', m.rAmp, 2, null, { normal: 'sin referencia' }),
+    row('sDur', 'Onda S: duración', 'ms', m.sDur, 0, null, { normal: 'sin referencia', text: m.sDur > 0 ? null : 'No se ve' }),
+    row('sAmp', 'Onda S: profundidad', 'mV', m.sAmp, 2, null, { normal: 'sin referencia' }),
+    { group: 'Recuperación (repolarización)' },
+    row('st', 'Segmento ST', 'mV', m.st, 2, R.st),
+    row('tDur', 'Onda T: duración', 'ms', m.tDur, 0, null, { normal: 'sin referencia' }),
+    row('tAmp', 'Onda T: amplitud', 'mV', m.tFound ? m.tAmp : NaN, 2, R.tAmp, m.tFound ? {} : { text: 'No se ve', st: 'warn' }),
+    row('qt', 'Intervalo QT', 'ms', m.qt, 0, null, { normal: 'según la frecuencia' }),
+    row('qtc', 'QT corregido (QTc)', 'ms', m.qtc, 0, R.qtc, stConf ? { note: m.qtcMethod } : { text: 'No confiable', st: 'warn', note: 'ST muy desviado' })
+  ];
+  return out;
+}
+
+return { analyze, interpret, delineate, prepare, detectQRS, filtfilt, biquad, ranges, statusOf, median, mean, std };
+})();
+if (typeof module !== 'undefined') module.exports = ECGAN;
+
+</script>
+<script>
+/* ==========================================================================
+   GENERADOR DE ECG SIMULADO (modo demostración y pruebas)
+   Cada latido se arma con gaussianas para P, Q, R, S y T según parámetros
+   (PR, QRS, QT, amplitudes) y se le suma ruido, deriva de línea de base y
+   50 Hz de red.
+   ========================================================================== */
+const ECGDEMO = (function () {
+'use strict';
+
+const BASE = { hr: 72, pr: 160, qrs: 90, qtc: 410, pDur: 100, pAmp: 0.15, rAmp: 1.1, qAmp: 0.08, sAmp: 0.15,
+  qWide: 1, tAmp: 0.30, st: 0, irregular: false, noP: false, pvc: false, noise: 0.008, wander: 0.05, mains: 0.006, flat: false };
+
+const SCENARIOS = {
+  normal:      { name: 'Normal', desc: 'Ritmo sinusal, todos los valores normales' },
+  bradicardia: { name: 'Bradicardia', hr: 44, desc: 'Frecuencia baja' },
+  taquicardia: { name: 'Taquicardia', hr: 122, pr: 140, desc: 'Frecuencia alta' },
+  bav1:        { name: 'PR largo (bloqueo AV 1.er grado)', pr: 270 },
+  qrsancho:    { name: 'QRS ancho (bloqueo de rama)', qrs: 140, tAmp: 0.2 },
+  qtlargo:     { name: 'QT largo', qtc: 530 },
+  fa:          { name: 'Fibrilación auricular', irregular: true, noP: true },
+  extrasistoles:{ name: 'Extrasístoles ventriculares', pvc: true },
+  stelev:      { name: 'Elevación del ST', st: 0.28 },
+  stdesc:      { name: 'Descenso del ST', st: -0.26 },
+  tinv:        { name: 'Onda T invertida', tAmp: -0.32 },
+  qpat:        { name: 'Onda Q patológica', qAmp: 0.40, qWide: 3.4, qrs: 76 },
+  bajovolt:    { name: 'Voltaje bajo', rAmp: 0.28, sAmp: 0.04, qAmp: 0.02, pAmp: 0.06, tAmp: 0.12 },
+  ruidosa:     { name: 'Señal con mucho ruido', noise: 0.16, wander: 0.6, mains: 0.2 },
+  sinsenal:    { name: 'Sin señal (electrodos sueltos)', flat: true }
+};
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+class Source {
+  constructor(id, fs, seed) {
+    this.p = Object.assign({}, BASE, SCENARIOS[id] || {});
+    this.fs = fs; this.idx = 0; this.rng = mulberry32(seed || 12345);
+    this.beats = []; this.tNext = 0.35; this.count = 0; this.pause = false;
+    this.lp = 0; this.fw = [1, 2, 3, 4].map(() => ({ f: 4 + this.rng() * 4, ph: this.rng() * 6.28 }));
+  }
+  _gauss() { let u = 0, v = 0; while (!u) u = this.rng(); v = this.rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  _newBeat() {
+    const p = this.p, base = 60 / p.hr;
+    const t = this.tNext, k = this.count++;
+    let type = 'N', rrNext;
+    if (p.pvc) {
+      if (this.pause) { rrNext = base * 1.0; this.pause = false; }
+      else if (k % 6 === 4) { rrNext = base * 0.60; this.pendingV = true; }
+      else rrNext = base;
+      if (this.pendingV && k % 6 === 5) { type = 'V'; this.pendingV = false; rrNext = base * 1.4; this.pause = false; }
+    } else if (p.irregular) rrNext = base * (0.68 + 0.64 * this.rng());
+    else rrNext = base * (1 + 0.035 * Math.sin(2 * Math.PI * 0.25 * t) + 0.01 * (this.rng() - 0.5));
+    const rr = rrNext;
+    this.tNext = t + rr;
+    const b = { t, type, comps: [], stAmp: 0 };
+    const q = p.qrs / 1000, a = 0.42;
+    if (type === 'V') {
+      const qv = 0.14, on = t - a * qv;
+      b.comps.push({ c: t, s: 0.075 * qv * 1.6, a: p.rAmp * 1.3 }, { c: t + 0.30 * qv, s: 0.08 * qv * 1.5, a: -0.35 });
+      b.comps.push({ c: on + 0.36, s: 0.055, a: -0.42 });
+      return b;
+    }
+    const on = t - a * q, J = t + (1 - a) * q;
+    if (!p.noP) {
+      const pd = p.pDur / 1000, pc = on - p.pr / 1000 + pd / 2;
+      b.comps.push({ c: pc, s: pd / 4.3, a: p.pAmp });
+    }
+    b.comps.push({ c: t - 0.27 * q, s: 0.065 * q * p.qWide, a: -p.qAmp });
+    b.comps.push({ c: t, s: 0.115 * q, a: p.rAmp });
+    b.comps.push({ c: t + 0.27 * q, s: 0.10 * q, a: -p.sAmp });
+    const qt = (p.qtc / 1000) * Math.sqrt(Math.min(rr, 1.5)), sT = 0.046 * Math.sqrt(Math.min(1.5, Math.max(0.6, rr / 0.833)));
+    const tEnd = on + qt, tc = tEnd - 2 * sT;
+    b.comps.push({ c: tc, s: sT, a: p.tAmp });
+    if (p.st) { b.stAmp = p.st; b.stA = J; b.stB = tc; b.stC = tEnd + 0.02; }
+    return b;
+  }
+  _sample(t) {
+    while (this.tNext < t + 1.0) this.beats.push(this._newBeat());
+    while (this.beats.length && this.beats[0].t < t - 1.2) this.beats.shift();
+    let v = 0;
+    for (const b of this.beats) {
+      const dt = t - b.t; if (dt < -1.0 || dt > 1.1) continue;
+      for (const c of b.comps) { const x = (t - c.c) / c.s; if (x > -6 && x < 6) v += c.a * Math.exp(-0.5 * x * x); }
+      if (b.stAmp) {
+        const u = Math.min(1, Math.max(0, (t - (b.stA - 0.010)) / 0.045)), up = 0.5 * (1 - Math.cos(Math.PI * u)), down = t < b.stB ? 1 : Math.max(0, 1 - (t - b.stB) / (b.stC - b.stB));
+        v += b.stAmp * up * down;
+      }
+    }
+    return v;
+  }
+  next(n) {
+    const p = this.p, out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = (this.idx + i) / this.fs;
+      if (p.flat) { out[i] = 0.0008 * this._gauss(); continue; }
+      let v = this._sample(t);
+      this.lp += 0.6 * (this._gauss() * p.noise - this.lp);
+      v += this.lp;
+      v += p.wander * (Math.sin(2 * Math.PI * 0.27 * t) + 0.5 * Math.sin(2 * Math.PI * 0.11 * t + 1));
+      v += p.mains * Math.sin(2 * Math.PI * 50 * t);
+      if (p.noP && p.irregular) for (const w of this.fw) v += 0.012 * Math.sin(2 * Math.PI * w.f * t + w.ph);
+      out[i] = v;
+    }
+    this.idx += n;
+    return out;
+  }
+}
+return { Source, SCENARIOS, BASE };
+})();
+if (typeof module !== 'undefined') module.exports = ECGDEMO;
+
+</script>
+<script>
+/* ==========================================================================
+   INTERFAZ: recepción de datos (demo o MQTT), gráfico en vivo y paneles
+   ========================================================================== */
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+const AN = ECGAN, DM = ECGDEMO;
+const FS_DEMO = 286.67, LAG = 0.35;
+const fmt = (v, d) => Number.isFinite(v) ? v.toFixed(d || 0).replace('.', ',') : '—';
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rand = n => { const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * c.length)]; return s; };
+
+/* ---------- configuración ---------- */
+const BROKERS = [
+  { label: 'HiveMQ (servidor público)', url: 'wss://broker.hivemq.com:8884/mqtt' },
+  { label: 'EMQX (servidor público)', url: 'wss://broker.emqx.io:8084/mqtt' },
+  { label: 'Mosquitto (servidor público)', url: 'wss://test.mosquitto.org:8081' },
+  { label: 'Otro servidor…', url: '' }
+];
+const KEY = 'ecg-monitor-v1';
+const loadCfg = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } };
+const cfg = Object.assign({ source: 'demo', scenario: 'normal', broker: BROKERS[0].url, device: '', user: '', sex: 'M', speed: 25, gain: 10, marks: true }, loadCfg());
+let passMem = '';
+const saveCfg = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
+if (!cfg.device) { cfg.device = 'ECG-' + rand(6); saveCfg(); }
+const topicOf = () => 'ecgtp/' + cfg.device + '/signal';
+
+/* ---------- estado y memoria circular de muestras ---------- */
+const CAP = 1 << 14;
+const S = { fs: FS_DEMO, buf: new Float32Array(CAP), total: 0, play: 0, lastRx: 0, lost: 0, expected: null, paused: false, res: null, shown: null, cand: 0, conn: 'demo' };
+function resetBuf(fs) { S.fs = fs; S.total = 0; S.play = 0; S.lastRx = 0; S.lost = 0; S.expected = null; S.res = null; S.shown = null; S.cand = 0; S.buf.fill(0); }
+function pushSamples(a) { for (let i = 0; i < a.length; i++) S.buf[S.total++ % CAP] = a[i]; S.lastRx = performance.now(); if (S.play === 0 && S.total > 2) S.play = Math.max(0, S.total - 1 - LAG * S.fs); }
+function getRange(a, b) { const o = new Float32Array(b - a); for (let i = 0; i < o.length; i++) o[i] = S.buf[(a + i) % CAP]; return o; }
+
+/* ---------- estado de la conexión ---------- */
+function setConn(k, txt) { S.conn = k; const c = $('conn'); c.dataset.k = k; $('connText').textContent = txt; }
+
+/* ---------- fuente: demostración ---------- */
+let demoSrc = null, demoTimer = null, demoLast = 0, demoAcc = 0, client = null;
+function stopAll() { if (demoTimer) { clearInterval(demoTimer); demoTimer = null; } if (client) { try { client.end(true); } catch (e) {} client = null; } }
+function startDemo() {
+  stopAll(); resetBuf(FS_DEMO);
+  demoSrc = new DM.Source(cfg.scenario, FS_DEMO, (Math.random() * 1e6) | 0);
+  pushSamples(demoSrc.next(Math.round(FS_DEMO * 13)));
+  S.play = S.total - 1 - LAG * S.fs; demoLast = performance.now(); demoAcc = 0;
+  demoTimer = setInterval(() => {
+    const now = performance.now(); demoAcc += Math.min(5, (now - demoLast) / 1000) * FS_DEMO; demoLast = now;
+    const n = Math.floor(demoAcc); if (n > 0) { demoAcc -= n; pushSamples(demoSrc.next(n)); }
+  }, 100);
+  setConn('demo', 'Demostración: señal simulada');
+  $('stripMsg').classList.remove('on');
+  runAnalysis();
+}
+
+/* ---------- fuente: ESP32 por MQTT ---------- */
+function startMqtt() {
+  stopAll(); resetBuf(286.67);
+  if (window.__noMqtt || typeof mqtt === 'undefined') { setConn('error', 'No se pudo cargar la librería MQTT'); stripMsg('No se pudo cargar la librería MQTT. Hace falta conexión a internet para abrir esta página.'); return; }
+  setConn('connecting', 'Conectando al servidor…');
+  stripMsg('Conectando con el servidor MQTT…');
+  const opt = { clientId: 'ecgweb-' + Math.random().toString(16).slice(2, 10), clean: true, reconnectPeriod: 3000, connectTimeout: 10000, keepalive: 30 };
+  if (cfg.user) { opt.username = cfg.user; opt.password = passMem; }
+  try { client = mqtt.connect(cfg.broker, opt); } catch (e) { setConn('error', 'La dirección del servidor no es válida'); stripMsg('La dirección del servidor no es válida.'); return; }
+  client.on('connect', () => client.subscribe(topicOf(), { qos: 0 }, err => {
+    if (err) { setConn('error', 'No se pudo suscribir al tema'); return; }
+    setConn('waiting', 'Conectado, esperando a la ESP32');
+  }));
+  client.on('reconnect', () => setConn('connecting', 'Reconectando…'));
+  client.on('offline', () => setConn('connecting', 'Sin conexión con el servidor'));
+  client.on('error', e => setConn('error', 'Error de conexión: ' + ((e && e.message) || e)));
+  client.on('message', (t, p) => onMessage(p));
+}
+function onMessage(p) {
+  let o; try { o = JSON.parse(new TextDecoder().decode(p)); } catch (e) { return; }
+  if (!o || !Array.isArray(o.v) || !o.v.length) return;
+  const fs = +o.fs;
+  if (fs > 50 && fs < 2000 && Math.abs(fs - S.fs) > 0.3) resetBuf(fs);
+  const v = Float32Array.from(o.v, x => x / 1000);                 // µV a mV
+  if (Number.isFinite(o.n)) {
+    if (S.expected != null && o.n !== S.expected) {
+      const gap = o.n - S.expected;
+      if (gap > 0 && gap < S.fs * 3) {
+        S.lost += gap;
+        const last = S.total ? S.buf[(S.total - 1) % CAP] : v[0], fill = new Float32Array(gap);
+        for (let i = 0; i < gap; i++) fill[i] = last + (v[0] - last) * (i + 1) / (gap + 1);
+        pushSamples(fill);
+      } else resetBuf(S.fs);
+    }
+    S.expected = o.n + v.length;
+  }
+  pushSamples(v);
+}
+function stripMsg(t) { const m = $('stripMsg'); if (t) { $('stripMsgTxt').textContent = t; m.classList.add('on'); } else m.classList.remove('on'); }
+
+/* ==========================================================================
+   GRÁFICO EN VIVO
+   ========================================================================== */
+const T = { w: 0, h: 0, dpr: 1, pxmm: 6, y0: 0, grid: null, ctx: null };
+function layoutTrace() {
+  const cv = $('trace'), r = cv.getBoundingClientRect();
+  T.dpr = Math.min(2.5, window.devicePixelRatio || 1); T.w = r.width; T.h = r.height;
+  cv.width = Math.round(T.w * T.dpr); cv.height = Math.round(T.h * T.dpr);
+  T.ctx = cv.getContext('2d'); T.y0 = T.h * 0.56;
+  buildGrid();
+}
+function buildGrid() {
+  T.pxmm = clamp(T.w / 150, 3.2, 10);
+  const g = document.createElement('canvas'); g.width = Math.round(T.w * T.dpr); g.height = Math.round(T.h * T.dpr);
+  const x = g.getContext('2d'); x.scale(T.dpr, T.dpr);
+  x.fillStyle = css('--paper'); x.fillRect(0, 0, T.w, T.h);
+  const y0 = T.y0, p = T.pxmm;
+  const lines = (step, col) => {
+    x.strokeStyle = col; x.lineWidth = 1; x.beginPath();
+    for (let k = 0; k * step <= T.w; k++) { const px = Math.round(k * step) + .5; x.moveTo(px, 0); x.lineTo(px, T.h); }
+    for (let k = 0; y0 + k * step <= T.h || y0 - k * step >= 0; k++) {
+      const a = Math.round(y0 + k * step) + .5, b = Math.round(y0 - k * step) + .5;
+      x.moveTo(0, a); x.lineTo(T.w, a); if (k) { x.moveTo(0, b); x.lineTo(T.w, b); }
+    }
+    x.stroke();
+  };
+  if (p >= 3.2) lines(p, css('--gridMinor'));
+  lines(p * 5, css('--gridMajor'));
+  // escala: 1 mV y 0,2 s
+  const pxmv = p * cfg.gain, sx = 16, sy = T.h - 14;
+  x.strokeStyle = css('--ink2'); x.lineWidth = 1.6; x.beginPath();
+  x.moveTo(sx, sy); x.lineTo(sx, sy - pxmv); x.moveTo(sx - 4, sy); x.lineTo(sx + 4, sy); x.moveTo(sx - 4, sy - pxmv); x.lineTo(sx + 4, sy - pxmv);
+  const w2 = 0.2 * cfg.speed * p; x.moveTo(sx + 14, sy); x.lineTo(sx + 14 + w2, sy); x.moveTo(sx + 14, sy - 4); x.lineTo(sx + 14, sy + 4); x.moveTo(sx + 14 + w2, sy - 4); x.lineTo(sx + 14 + w2, sy + 4);
+  x.stroke();
+  x.fillStyle = css('--ink2'); x.font = '500 12px ' + css('--f-txt'); x.textBaseline = 'middle';
+  x.fillText('1 mV', sx + 8, sy - pxmv / 2 - (pxmv < 40 ? 14 : 0)); x.textBaseline = 'alphabetic'; x.fillText('0,2 s', sx + 14 + w2 + 8, sy + 4);
+  T.grid = g;
+}
+function drawTrace() {
+  const c = T.ctx; if (!c) return;
+  c.setTransform(T.dpr, 0, 0, T.dpr, 0, 0);
+  c.drawImage(T.grid, 0, 0, T.w, T.h);
+  if (S.total < 3) return;
+  const fs = S.fs, N = (T.w / (T.pxmm * cfg.speed)) * fs, end = S.play, start = end - N, pps = T.w / N;
+  const pxmv = T.pxmm * cfg.gain, y0 = T.y0;
+  const i0 = Math.max(Math.ceil(start), S.total - CAP + 8, 0), i1 = Math.min(Math.floor(end), S.total - 1);
+  c.beginPath(); c.lineWidth = 1.9; c.lineJoin = 'round'; c.lineCap = 'round'; c.strokeStyle = css('--trace');
+  for (let i = i0; i <= i1; i++) { const x = (i - start) * pps, y = y0 - S.buf[i % CAP] * pxmv; if (i === i0) c.moveTo(x, y); else c.lineTo(x, y); }
+  c.stroke();
+  const r = S.res;
+  if (cfg.marks && r && r.beats && usable()) {
+    c.font = '600 12.5px ' + css('--f-txt'); c.textAlign = 'center'; c.lineWidth = 3.4; c.lineJoin = 'round';
+    const paper = css('--paper'), cR = css('--rmark'), cA = css('--accent'), cG = css('--ink2');
+    const mark = (idx, ch, dir, col) => {
+      if (idx < i0 || idx > i1) return;
+      const x = (idx - start) * pps, y = y0 - S.buf[idx % CAP] * pxmv;
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.8, 0, 6.283); c.fill();
+      const ty = dir < 0 ? y - 9 : y + 17;
+      c.strokeStyle = paper; c.strokeText(ch, x, ty); c.fillStyle = col; c.fillText(ch, x, ty);
+    };
+    for (const b of r.beats) {
+      const d = b.d; if (!d || !d.ok) continue; const o = r.x0;
+      mark(o + d.ri, 'R', -1, cR);
+      if (d.pFound && r.pConsistent) mark(o + d.pPk, 'P', -1, cA);
+      if (d.qFound) mark(o + d.qi, 'Q', 1, cG);
+      if (d.sFound) mark(o + d.si, 'S', 1, cG);
+      if (d.tFound) mark(o + d.tPk, 'T', d.tAmp >= 0 ? -1 : 1, cA);
+    }
+  }
+  const hx = (i1 - start) * pps, hy = y0 - S.buf[i1 % CAP] * pxmv;
+  c.fillStyle = css('--rmark'); c.beginPath(); c.arc(hx, hy, 4, 0, 6.283); c.fill();
+}
+let lastT = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (!S.paused && S.total > 2) {
+    const lag = (S.total - 1 - S.play) / S.fs;
+    let k = 1;
+    if (lag > 4) S.play = S.total - 1 - LAG * S.fs;
+    else if (lag > LAG * 2.4) k = 1.12; else if (lag > LAG * 1.5) k = 1.04; else if (lag < LAG * 0.35) k = 0.88; else if (lag < LAG * 0.7) k = 0.97;
+    S.play = Math.min(S.play + dt * S.fs * k, S.total - 1);
+  }
+  drawTrace();
+  requestAnimationFrame(frame);
+}
+
+/* ==========================================================================
+   LATIDO PROMEDIO
+   ========================================================================== */
+const A = { w: 0, h: 0, dpr: 1, ctx: null };
+function layoutAvg() {
+  const cv = $('avg'), r = cv.getBoundingClientRect();
+  A.dpr = Math.min(2.5, window.devicePixelRatio || 1); A.w = r.width; A.h = r.height;
+  cv.width = Math.round(A.w * A.dpr); cv.height = Math.round(A.h * A.dpr); A.ctx = cv.getContext('2d');
+  drawAvg();
+}
+function usable() { const r = S.res; return !!(r && r.ok && S.shown && !S.shown.poor && !S.shown.stale); }
+function drawAvg() {
+  const c = A.ctx; if (!c) return;
+  const w = A.w, h = A.h, fontT = css('--f-txt');
+  c.setTransform(A.dpr, 0, 0, A.dpr, 0, 0);
+  c.fillStyle = css('--paper'); c.fillRect(0, 0, w, h);
+  const r = S.res, ok = usable() && r.avg && r.avg.d && r.avg.d.ok;
+  if (!ok) {
+    c.fillStyle = css('--ink2'); c.font = '500 14px ' + fontT; c.textAlign = 'center';
+    const poor = S.shown && S.shown.poor;
+    c.fillText(poor ? 'La señal tiene demasiado ruido para promediar' : 'Esperando latidos limpios para promediar…', w / 2, h / 2);
+    $('avgCap').textContent = 'Se alinean los latidos limpios sobre la onda R y se promedian para medir cada onda.'; return;
+  }
+  const av = r.avg, d = av.d, fs = av.fs, sig = av.sig, ri = av.ri;
+  const L = 12, R = 12, top = 28, bot = h - 84, t0 = -0.4, t1 = 0.6;
+  const X = t => L + (t - t0) / (t1 - t0) * (w - L - R);
+  let mn = 1e9, mx = -1e9; for (let i = 0; i < sig.length; i++) { mn = Math.min(mn, sig[i]); mx = Math.max(mx, sig[i]); }
+  mn = Math.min(mn, -0.15); mx = Math.max(mx, 0.4);
+  const sc = (bot - top) / (mx - mn) * 0.94, Y = v => top + (mx - v) * sc + (bot - top) * 0.03;
+  const minor = c.strokeStyle = css('--gridMinor'); c.lineWidth = 1;
+  const grid = (dt, dv, col) => {
+    c.strokeStyle = col; c.beginPath();
+    for (let t = Math.ceil(t0 / dt) * dt; t <= t1 + 1e-9; t += dt) { const x = Math.round(X(t)) + .5; c.moveTo(x, top - 10); c.lineTo(x, bot + 4); }
+    for (let v = Math.ceil((mn - .1) / dv) * dv; v <= mx + .1; v += dv) { const y = Math.round(Y(v)) + .5; if (y > top - 10 && y < bot + 4) { c.moveTo(0, y); c.lineTo(w, y); } }
+    c.stroke();
+  };
+  if (X(0.04) - X(0) >= 5 && sc * 0.1 >= 5) grid(0.04, 0.1, minor);
+  grid(0.2, 0.5, css('--gridMajor'));
+  // línea isoeléctrica
+  c.setLineDash([4, 4]); c.strokeStyle = css('--muted'); c.lineWidth = 1; c.beginPath(); c.moveTo(L, Y(d.iso)); c.lineTo(w - R, Y(d.iso)); c.stroke(); c.setLineDash([]);
+  // guías verticales de los límites medidos
+  const T_ = i => (i - ri) / fs;
+  const guides = [d.onset, d.offset]; if (d.pFound) guides.push(d.pOn); if (d.tEnd != null) guides.push(d.tEnd);
+  c.setLineDash([2, 3]); c.strokeStyle = 'rgba(27,38,50,.35)'; c.beginPath();
+  for (const g of guides) { const x = Math.round(X(T_(g))) + .5; c.moveTo(x, top - 6); c.lineTo(x, bot + 78); } c.stroke(); c.setLineDash([]);
+  // curva
+  c.beginPath(); c.lineWidth = 2.2; c.lineJoin = 'round'; c.strokeStyle = css('--trace');
+  for (let i = 0; i < sig.length; i++) { const x = X(T_(i)), y = Y(sig[i]); if (i) c.lineTo(x, y); else c.moveTo(x, y); }
+  c.stroke();
+  // puntos y letras
+  c.font = '700 14px ' + fontT; c.textAlign = 'center'; c.lineWidth = 4; c.lineJoin = 'round';
+  const pt = (i, ch, dir, col) => {
+    const x = X(T_(i)), y = Y(sig[Math.round(i)]);
+    c.fillStyle = col; c.beginPath(); c.arc(x, y, 3.4, 0, 6.283); c.fill();
+    const ty = dir < 0 ? y - 10 : y + 20;
+    c.strokeStyle = css('--paper'); c.strokeText(ch, x, ty); c.fillStyle = col; c.fillText(ch, x, ty);
+  };
+  const cR = css('--rmark'), cA = css('--accent'), cG = css('--ink2');
+  pt(d.ri, 'R', -1, cR);
+  if (d.pFound) pt(d.pPk, 'P', d.pAmp >= 0 ? -1 : 1, cA);
+  if (d.qFound) pt(d.qi, 'Q', 1, cG);
+  if (d.sFound) pt(d.si, 'S', 1, cG);
+  if (d.tFound) pt(d.tPk, 'T', d.tAmp >= 0 ? -1 : 1, cA);
+  // barras de intervalos
+  const bar = (i0, i1, row, label, col) => {
+    const x0 = X(T_(i0)), x1 = X(T_(i1)), y = bot + 22 + row * 22;
+    c.strokeStyle = col; c.lineWidth = 3; c.lineCap = 'butt'; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+    c.lineWidth = 1.6; c.beginPath(); c.moveTo(x0, y - 5); c.lineTo(x0, y + 5); c.moveTo(x1, y - 5); c.lineTo(x1, y + 5); c.stroke();
+    c.font = '600 12.5px ' + fontT; c.fillStyle = css('--ink'); const tw = c.measureText(label).width;
+    if (x1 + 8 + tw < w - 4) { c.textAlign = 'left'; c.fillText(label, x1 + 8, y + 4); } else { c.textAlign = 'right'; c.fillText(label, x0 - 8, y + 4); }
+  };
+  const m = r.m;
+  if (d.pFound) bar(d.pOn, d.onset, 0, 'PR ' + fmt(m.pr) + ' ms', cA);
+  bar(d.onset, d.offset, 1, 'QRS ' + fmt(m.qrs) + ' ms', cR);
+  if (d.tEnd != null && Number.isFinite(m.qt)) bar(d.onset, d.tEnd, 2, 'QT ' + fmt(m.qt) + ' ms', '#5A6AA6');
+  $('avgCap').textContent = `Promedio de ${av.n} latidos alineados sobre la onda R. Cuadros grandes: 200 ms y 0,5 mV.`;
+}
+
+/* ==========================================================================
+   ANÁLISIS Y PANELES
+   ========================================================================== */
+const ICON = {
+  1: '<svg class="m" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 1.6L17 16H1z" fill="#F6C55B" stroke="#9A5B00" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+  2: '<svg class="m" viewBox="0 0 18 18" aria-hidden="true"><path d="M6 1h6l5 5v6l-5 5H6l-5-5V6z" fill="#E86A62" stroke="#BE2B2B" stroke-width="1.4" stroke-linejoin="round"/></svg>'
+};
+function runAnalysis() {
+  if (S.paused) return;
+  const fs = S.fs, now = performance.now();
+  let it, res = null;
+  const stale = cfg.source === 'mqtt' && (S.total === 0 || now - S.lastRx > 4000);
+  if (stale) {
+    it = { level: 'none', headline: S.total === 0 ? 'Esperando a la ESP32' : 'Sin datos', summary: 'No están llegando muestras. Revisá que la ESP32 esté encendida y conectada al WiFi, y que el código del equipo sea el mismo en el programa y en Ajustes.', findings: [], rows: null, conf: null, stale: true };
+  } else if (S.total < fs * 5) {
+    it = AN.interpret({ ok: false, reason: 'pocos datos' }, cfg);
+  } else {
+    const n = Math.round(fs * 12), end = S.total, start = Math.max(0, end - n);
+    res = AN.analyze(getRange(start, end), fs, { x0: start });
+    it = AN.interpret(res, { sex: cfg.sex });
+  }
+  S.res = res;
+  // el veredicto solo cambia si el nuevo nivel se repite en dos análisis seguidos
+  if (!S.shown || it.level === S.shown.level || it.stale || S.shown.stale) { S.shown = it; S.cand = 0; }
+  else if (++S.cand >= 2) { S.shown = it; S.cand = 0; }
+  render(S.shown, res);
+}
+function render(it, res) {
+  $('verdict').dataset.level = it.level;
+  const hrRow = it.rows && it.rows.find(r => r.key === 'hr'); $('strip').dataset.level = hrRow && hrRow.st !== 'na' && hrRow.st !== 'info' ? hrRow.st : 'none';
+  $('vHead').textContent = it.headline; $('vSum').textContent = it.summary;
+  const ul = $('findings');
+  if (it.findings && it.findings.length) ul.innerHTML = it.findings.map(f => `<li class="s${f.sev}">${ICON[f.sev]}<div><strong>${f.title}</strong><span>${f.detail}</span></div></li>`).join('');
+  else if (it.level === 'ok') ul.innerHTML = '<li><div class="none">Ninguna de las mediciones salió de su rango normal.</div></li>';
+  else ul.innerHTML = '';
+  const q = it.conf && it.conf.quality;
+  const qb = $('qual');
+  if (q) { qb.dataset.q = q.label; $('qBar').style.width = Math.round(q.score * 100) + '%'; $('qTxt').textContent = `Calidad de la señal: ${q.label} (${Math.round(q.score * 100)} %)`; $('qBeats').textContent = it.conf.beats ? `${it.conf.beats} latidos promediados` : ''; }
+  else { qb.dataset.q = 'none'; $('qBar').style.width = '0'; $('qTxt').textContent = 'Calidad de la señal: sin datos'; $('qBeats').textContent = ''; }
+  renderRows(it);
+  const hr = res && res.ok ? res.m.hr : res && res.hr;
+  $('hrBig').textContent = Number.isFinite(hr) && !it.stale && !it.poor ? Math.round(hr) : '--';
+  drawAvg();
+}
+function rangeTxt(sp, dec) {
+  const f = v => fmt(v, dec);
+  return sp.ok[0] < 0 ? `${f(sp.ok[0])} a ${f(sp.ok[1])}` : `${f(sp.ok[0])}–${f(sp.ok[1])}`;
+}
+function gauge(r) {
+  const sp = r.spec, lo = sp.axis[0], hi = sp.axis[1], p = v => clamp((v - lo) / (hi - lo), 0, 1) * 100;
+  const zw = `left:${p(sp.warn[0])}%;width:${p(sp.warn[1]) - p(sp.warn[0])}%`, zo = `left:${p(sp.ok[0])}%;width:${p(sp.ok[1]) - p(sp.ok[0])}%`;
+  return `<div class="gauge${sp.max === 'warn' ? ' soft' : ''}"><i class="zw" style="${zw}"></i><i class="zo" style="${zo}"></i><b class="mk" style="left:${p(r.v)}%"></b></div>`;
+}
+let lastRowsKey = '';
+function renderRows(it) {
+  const tb = $('rows');
+  if (!it.rows) { const k = 'empty'; if (lastRowsKey !== k) { tb.innerHTML = '<tr><td colspan="5" class="empty">Las mediciones aparecen cuando hay una señal que se pueda analizar.</td></tr>'; lastRowsKey = k; } return; }
+  const PILL = { warn: 'Atención', alert: 'Alerta' };
+  const CHECK = '<svg class="okg" viewBox="0 0 20 20" role="img" aria-label="Normal"><circle cx="10" cy="10" r="9" fill="#E3F3EA" stroke="#187A4B" stroke-width="1.4"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#187A4B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  let h = '';
+  for (const r of it.rows) {
+    if (r.group) { h += `<tr class="grp"><th colspan="5" scope="colgroup">${r.group}</th></tr>`; continue; }
+    const has = Number.isFinite(r.v) && !r.text;
+    const val = r.text ? `<span class="txt">${r.text}</span>` : has ? `<b>${fmt(r.v, r.dec)}</b><em>${r.unit}</em>` : '<b>—</b>';
+    const note = r.note ? `<small>${r.note}</small>` : '';
+    const g = (r.spec && has) ? gauge(r) : '';
+    const nrm = r.spec ? rangeTxt(r.spec, r.dec) : (r.normal || '');
+    const pill = r.st === 'ok' ? CHECK : PILL[r.st] ? `<span class="pill ${r.st}">${PILL[r.st]}</span>` : '';
+    h += `<tr class="st-${r.st}"><td class="n">${r.label}${note}</td><td class="v">${val}</td><td class="g">${g}</td><td class="r">${nrm}</td><td class="p">${pill}</td></tr>`;
+  }
+  if (h !== lastRowsKey) { tb.innerHTML = h; lastRowsKey = h; }
+}
+
+/* ==========================================================================
+   CONTROLES Y AJUSTES
+   ========================================================================== */
+function syncSeg(id, val) { document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute('aria-pressed', String(parseFloat(b.dataset.v) === val))); }
+function updateTag() { $('tagTxt').textContent = `${fmt(cfg.speed, cfg.speed % 1 ? 1 : 0)} mm/s, ${cfg.gain} mm/mV`; }
+function applySource() {
+  $('scWrap').classList.toggle('hide', cfg.source !== 'demo');
+  if (cfg.source === 'demo') startDemo(); else startMqtt();
+}
+function initControls() {
+  const sc = $('scenario');
+  sc.innerHTML = Object.keys(DM.SCENARIOS).map(k => `<option value="${k}">${DM.SCENARIOS[k].name}</option>`).join('');
+  sc.value = cfg.scenario;
+  sc.addEventListener('change', () => { cfg.scenario = sc.value; saveCfg(); if (cfg.source === 'demo') startDemo(); });
+  syncSeg('segSpeed', cfg.speed); syncSeg('segGain', cfg.gain); updateTag();
+  $('segSpeed').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cfg.speed = parseFloat(b.dataset.v); saveCfg(); syncSeg('segSpeed', cfg.speed); updateTag(); buildGrid(); });
+  $('segGain').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; cfg.gain = parseFloat(b.dataset.v); saveCfg(); syncSeg('segGain', cfg.gain); updateTag(); buildGrid(); });
+  $('chkMarks').checked = cfg.marks;
+  $('chkMarks').addEventListener('change', e => { cfg.marks = e.target.checked; saveCfg(); });
+  $('btnPause').addEventListener('click', () => {
+    S.paused = !S.paused; $('btnPause').textContent = S.paused ? 'Continuar' : 'Pausar';
+    if (!S.paused && S.total > 2) S.play = S.total - 1 - LAG * S.fs;
+  });
+
+  const dlg = $('dlg'), brokerSel = $('broker'), brokerUrl = $('brokerUrl');
+  brokerSel.innerHTML = BROKERS.map((b, i) => `<option value="${i}">${b.label}</option>`).join('');
+  const showTopic = () => { const v = $('device').value.replace(/[^A-Za-z0-9_-]/g, ''); $('topicShow').textContent = 'ecgtp/' + (v || '…') + '/signal'; };
+  const syncBox = () => { $('mqttBox').classList.toggle('hide', dlg.querySelector('input[name=src]:checked').value !== 'mqtt'); brokerUrl.classList.toggle('hide', BROKERS[brokerSel.value].url !== ''); };
+  $('btnSet').addEventListener('click', () => {
+    dlg.querySelector(`input[name=src][value=${cfg.source}]`).checked = true;
+    const idx = BROKERS.findIndex(b => b.url === cfg.broker); brokerSel.value = idx >= 0 ? idx : BROKERS.length - 1; brokerUrl.value = idx >= 0 ? '' : cfg.broker;
+    $('device').value = cfg.device; $('user').value = cfg.user; $('pass').value = passMem; $('sex').value = cfg.sex;
+    showTopic(); syncBox(); dlg.showModal();
+  });
+  dlg.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', syncBox));
+  brokerSel.addEventListener('change', syncBox); $('device').addEventListener('input', showTopic);
+  $('dlgCancel').addEventListener('click', () => dlg.close());
+  $('frm').addEventListener('submit', e => {
+    e.preventDefault();
+    cfg.source = dlg.querySelector('input[name=src]:checked').value;
+    const b = BROKERS[brokerSel.value]; cfg.broker = b.url || brokerUrl.value.trim() || BROKERS[0].url;
+    cfg.device = $('device').value.replace(/[^A-Za-z0-9_-]/g, '') || cfg.device;
+    cfg.user = $('user').value.trim(); passMem = $('pass').value; cfg.sex = $('sex').value;
+    saveCfg(); dlg.close(); applySource();
+  });
+}
+
+/* ---------- arranque ---------- */
+function resizeAll() { layoutTrace(); layoutAvg(); }
+window.addEventListener('resize', () => { clearTimeout(resizeAll.t); resizeAll.t = setTimeout(resizeAll, 80); });
+initControls();
+resizeAll();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { buildGrid(); drawAvg(); });
+applySource();
+setInterval(runAnalysis, 500);
+setInterval(() => {
+  const age = (performance.now() - S.lastRx) / 1000;
+  if (cfg.source === 'mqtt' && client && client.connected) {
+    if (S.total > 0 && age < 3) { setConn('live', 'En vivo desde la ESP32'); stripMsg(''); }
+    else if (S.total > 0) { setConn('stale', `Sin datos desde hace ${Math.round(age)} s`); stripMsg('Se cortó la llegada de datos desde la ESP32.'); }
+    else { setConn('waiting', 'Conectado, esperando a la ESP32'); stripMsg(`Conectado al servidor. Esperando datos de la ESP32 con el código ${cfg.device}.`); }
+  } else if (cfg.source === 'mqtt' && S.conn === 'error') stripMsg($('connText').textContent);
+  $('rate').textContent = S.total > 0 && age < 4 ? `${fmt(S.fs, 1)} muestras/s${S.lost ? ', ' + S.lost + ' perdidas' : ''}` : '--';
+}, 1000);
+requestAnimationFrame(frame);
+window.__ecg = { S, cfg, applySource, onMessage };     // para pruebas
+})();
+
+</script>
+</body>
+</html>
